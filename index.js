@@ -6,7 +6,6 @@ const app = express();
 app.use(express.json());
 
 let sock;
-// ઓટો-રિપ્લાય વેરીએબલ
 let botStatus = "OFF";
 let botMessage = "હું અત્યારે વ્યસ્ત છું, પછી સંપર્ક કરું.";
 
@@ -14,32 +13,36 @@ async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true,
+        // કાળી સ્ક્રીન વાળો જૂનો કમાન્ડ કાઢી નાખ્યો છે
         logger: pino({ level: 'silent' })
     });
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
-        const { connection } = update;
+        const { connection, qr } = update;
+        
+        // 🚀 નવો જુગાડ: QR કોડની લિંક બનાવવા માટે
+        if (qr) {
+            console.log("\n👇 નીચેની લિંક પર ક્લિક કરીને તમારો QR કોડ સ્કેન કરો 👇");
+            console.log("https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + encodeURIComponent(qr) + "\n");
+        }
+
         if (connection === 'close') {
             connectToWhatsApp();
         } else if (connection === 'open') {
-            console.log('WhatsApp Connected!');
+            console.log('✅ WhatsApp Connected Successfully!');
         }
     });
 
-    // 🤖 ઓટો-રિપ્લાય બોટ સિસ્ટમ
     sock.ev.on('messages.upsert', async m => {
         const msg = m.messages[0];
         if (!msg.key.fromMe && m.type === 'notify' && botStatus === "ON") {
             const sender = msg.key.remoteJid;
-            if (!sender.includes('@g.us')) { // ગ્રુપમાં નહિ જાય
+            if (!sender.includes('@g.us')) {
                 try {
                     await sock.sendMessage(sender, { text: botMessage });
-                } catch (err) {
-                    console.log("Auto Reply Error: ", err);
-                }
+                } catch (err) {}
             }
         }
     });
@@ -47,7 +50,6 @@ async function connectToWhatsApp() {
 
 connectToWhatsApp();
 
-// 🚀 મેસેજ મોકલવાનો રૂટ
 app.post('/send-message', async (req, res) => {
     try {
         const { number, message } = req.body;
@@ -59,7 +61,6 @@ app.post('/send-message', async (req, res) => {
     }
 });
 
-// 🤖 બોટ સેટિંગ્સ અપડેટ કરવાનો રૂટ
 app.post('/set-auto-reply', (req, res) => {
     botStatus = req.body.status;
     botMessage = req.body.message;
